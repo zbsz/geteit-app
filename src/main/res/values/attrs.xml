@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <declare-styleable name="LazyImageView">
+        <attr name="thumbnail" format="boolean" />
+        <attr name="fadeIn" format="boolean" />
+        <attr name="loadAnimation" format="boolean" />
+        <attr name="loadingDrawable" format="reference" />
+        <attr name="errorDrawable" format="reference" />
+    </declare-styleable>
+
+</resources>
