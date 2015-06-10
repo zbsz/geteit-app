@@ -9,4 +9,13 @@
         <attr name="errorDrawable" format="reference" />
     </declare-styleable>
 
+
+    <declare-styleable name="RoboView">
+        <attr name="fontFamily" format="enum" >
+            <enum name="regular" value="0" />
+            <enum name="light" value="1" />
+            <enum name="thin" value="2" />
+        </attr>
+    </declare-styleable>
+
 </resources>
