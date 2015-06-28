@@ -18,7 +18,7 @@ class TouchReactor(val view: View) { reactor =>
   val onCancel = new Publisher[MotionEvent]
   val onDrag = new Publisher[MotionEvent]
 
-  protected def onTouch(ev: MotionEvent) = {
+  def onTouch(ev: MotionEvent) = {
     ev.getAction match {
       case MotionEvent.ACTION_DOWN => onDown ! ev
       case MotionEvent.ACTION_MOVE => onDrag ! ev
@@ -48,7 +48,7 @@ trait PressStateUpdater extends TouchReactor {
   private var pressStart = 0L
   private def unpressDelay = ViewConfiguration.getPressedStateDuration min (SystemClock.uptimeMillis() - pressStart).toInt
 
-  override protected def onTouch(ev: MotionEvent) = {
+  override def onTouch(ev: MotionEvent) = {
     val res = super.onTouch(ev)
     ev.getAction match {
       case MotionEvent.ACTION_DOWN =>
