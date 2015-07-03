@@ -4,7 +4,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.support.v4.util.LruCache
 import com.geteit.concurrent.{LimitedExecutionContext, Threading}
 import com.geteit.events
-import com.geteit.events.{EventContext, Signal}
+import com.geteit.events.{EventObserver, EventContext, Signal}
+import com.geteit.util.Log._
 import com.geteit.util.ThrottledProcessingQueue
 
 import scala.collection.JavaConverters._
@@ -140,16 +141,67 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V]) {
 
 
 trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
+  import Threading.global
+  private implicit val tag: LogTag = "CachedStorageSignal"
 
   def signal(id: K)(implicit ev: EventContext): Signal[V] = new Signal[V]() {
 
-    def reload() = self.get(id).map { _.foreach(this ! _) } (Threading.global)
+    def reload() = self.get(id).map { _.foreach(this ! _) }
 
-    // TODO: implement autowiring
-    onAdded.filter(v => dao.getId(v) == id) { this ! _ }
-    onUpdated.filter(p => dao.getId(p._2) == id) { case (_, v) => this ! v }
-    onRemoved.filter(_ == id) { _ => reload() }
+    private var observers = Seq.empty[EventObserver[_]]
 
-    reload()
+    override protected def onWire(): Unit = {
+      observers = Seq(
+        onAdded.filter(v => dao.getId(v) == id) { this ! _ }, // FIXME: possible race condition with reload result
+        onUpdated.filter(p => dao.getId(p._2) == id) { case (_, v) => this ! v },
+        onRemoved.filter(_ == id) { _ => reload() }
+      )
+      reload()
+    }
+
+    override protected def onUnwire(): Unit = {
+      observers foreach (_.destroy())
+      value = None
+    }
+  }
+
+  def findSignal(matcher: Matcher[V])(implicit ev: EventContext): Signal[Set[K]] = new Signal[Set[K]] {
+
+    def reload() = {
+      verbose(s"reload ${matcher.whereSql}")
+      storage { dao.find(matcher.whereSql)(_) } onSuccess {
+        case ids =>
+          verbose(s"found: $ids")
+          this ! (value.getOrElse(Set.empty) ++ ids)
+      }
+    }
+
+    private var observers = Seq.empty[EventObserver[_]]
+
+    override protected def onWire(): Unit = {
+      value = None
+      observers = Seq(
+        // FIXME: possible race conditions - on every upate
+        onAdded { v =>
+          if (matcher(v)) this ! (value.getOrElse(Set.empty) + dao.getId(v))
+        },
+        onUpdated {
+          case (prev, up) =>
+            (matcher(prev), matcher(up)) match {
+              case (true, false) => value foreach { s => this ! (s - dao.getId(prev)) }
+              case (false, true) => this ! value.getOrElse(Set.empty) + dao.getId(up)
+              case _ =>
+            }
+        },
+        onRemoved { id => value foreach { s => this ! (s - id) } }
+      )
+      reload()
+    }
+
+    override protected def onUnwire(): Unit = {
+      verbose(s"onUnwire")
+      observers foreach (_.destroy())
+      value = None
+    }
   }
 }

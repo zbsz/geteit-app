@@ -3,8 +3,8 @@ package com.geteit.cache
 import java.lang.System.currentTimeMillis
 import java.util.UUID
 
-import android.database.sqlite.SQLiteDatabase
-import com.geteit.db.{Dao, DbType, Id}
+import android.database.sqlite.{SQLiteProgram, SQLiteDatabase}
+import com.geteit.db.{Index, Dao, DbType, Id}
 import com.geteit.json.{Json, JsonValue}
 import com.geteit.util.Log
 
@@ -19,7 +19,10 @@ object Uid {
     override def encode(v: Uid): String = v.str
   }
 
-  implicit object UidDbType extends DbType[Uid] with DbType.Text
+  implicit object UidDbType extends DbType[Uid] with DbType.Text {
+    override def literal(v: Uid): String = s"'${v.str}'"
+    def bind(stmt: SQLiteProgram, pos: Int, v: Uid) = stmt.bindString(pos, v.str)
+  }
 }
 
 @Json
@@ -43,9 +46,9 @@ object CacheEntryData {
   implicit object CacheEntryDao extends Dao[String, CacheEntryData] {
 
     object Indexes {
-      val expires = new Index[Long]("lastUsed", { e => e.lastUsed + e.timeout })
-      val hasData = new Index[Boolean]("hasData", _.data.nonEmpty)
-      val fileId = new Index[Uid]("fileId", _.fileId)
+      val expires = new Index[CacheEntryData, Long]("lastUsed", { e => e.lastUsed + e.timeout })
+      val hasData = new Index[CacheEntryData, Boolean]("hasData", _.data.nonEmpty)
+      val fileId = new Index[CacheEntryData, Uid]("fileId", _.fileId)
     }
 
     override def getId(v: CacheEntryData): String = v.key
