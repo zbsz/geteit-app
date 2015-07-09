@@ -2,7 +2,6 @@ package com.geteit.db
 
 import android.database.sqlite.{SQLiteDatabase, SQLiteOpenHelper}
 import com.geteit.concurrent.LimitedExecutionContext
-import com.geteit.inject.Factory
 import com.geteit.util.Log._
 import com.geteit.util.returning
 
@@ -34,6 +33,4 @@ trait Storage {
 
 object Storage {
   private implicit val tag: LogTag = "Storage"
-
-  implicit val factory = new Factory[Storage](_ => throw new UnsupportedOperationException("Injectable storage should be provided"))
 }

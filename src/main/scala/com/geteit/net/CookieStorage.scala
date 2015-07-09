@@ -5,7 +5,6 @@ import java.util.{Date, Locale, TimeZone}
 
 import android.net.Uri
 import com.geteit.concurrent.LimitedExecutionContext
-import com.geteit.inject.Factory
 import com.geteit.json.Json
 import com.geteit.net.CookieStorage.{Cookie, CookieSet}
 import com.geteit.util.Log._
@@ -42,9 +41,6 @@ class MemoryCookieStorage extends CookieStorage {
 }
 
 object CookieStorage {
-
-  implicit val factory = new Factory[CookieStorage](_ => new MemoryCookieStorage)
-
   @Json
   case class Cookie(key: String, value: String, expires: Date) {
     def expired = expires.before(new Date)

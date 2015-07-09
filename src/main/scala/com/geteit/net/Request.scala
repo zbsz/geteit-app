@@ -5,7 +5,6 @@ import java.net.URLEncoder
 
 import android.net.Uri
 import android.net.http.AndroidHttpClient
-import com.geteit.app.GtContext
 import com.geteit.net.ContentEncoder.{EmptyContentEncoder, EmptyRequestContent, RequestContent}
 import com.geteit.net.Request.ProgressCallback
 import com.geteit.util.{IoUtils, _}
@@ -14,6 +13,7 @@ import com.koushikdutta.async.http.AsyncHttpRequest
 import com.koushikdutta.async.http.body.{AsyncHttpRequestBody, MultipartFormDataBody}
 import com.koushikdutta.async.{DataEmitter, DataSink, Util}
 import org.json.JSONObject
+import com.geteit.inject.Injector
 
 import scala.concurrent.duration._
 
@@ -54,7 +54,7 @@ object Request {
   def Get(uri: Uri, callback: Option[ProgressCallback] = None, headers: Map[String, String] = EmptyHeaders) =
     Request[Unit](uri, GetMethod, callback = callback, headers = headers)(EmptyContentEncoder)
 
-  def RangeGet(uri: Uri, range: RangeSpec, dst: File, callback: Option[ProgressCallback] = None, headers: Map[String, String] = EmptyHeaders)(implicit context: GtContext) = {
+  def RangeGet(uri: Uri, range: RangeSpec, dst: File, callback: Option[ProgressCallback] = None, headers: Map[String, String] = EmptyHeaders)(implicit inj: Injector) = {
     Request[Unit](uri, GetMethod, callback = callback, headers = headers + RangeSpec(range), decoder = Some(new RangeResponseBodyDecoder(dst)))(EmptyContentEncoder)
   }
 

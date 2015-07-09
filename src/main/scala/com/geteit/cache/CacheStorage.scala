@@ -3,22 +3,23 @@ package com.geteit.cache
 import java.io.File
 import java.lang.System._
 
-import com.geteit.app.GtContext
+import android.content.Context
 import com.geteit.cache.CacheEntryData.CacheEntryDao
 import com.geteit.concurrent.Threading
-import com.geteit.db.{Storage, CachedStorage}
-import com.geteit.inject.{Factory, GtSingleton, Injectable}
+import com.geteit.db.{CachedStorage, Storage}
+import com.geteit.events.EventContext
 import com.geteit.util.Log._
 import com.geteit.util._
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.concurrent.Future
 
-class CacheStorage extends CachedStorage[String, CacheEntryData] with GtSingleton with Injectable {
+class CacheStorage(implicit inj: Injector) extends CachedStorage[String, CacheEntryData] with Injectable {
   private implicit val logTag: LogTag = "CacheStorage"
+  private implicit val eventContext = inject[EventContext]
 
-  lazy val cacheDir = CacheStorage.cacheDir
+  lazy val cacheDir = CacheStorage.cacheDir(inject[Context])
   
-  override lazy val storage = inject[Storage]
   override protected val cache = new LruCache[String, Option[CacheEntryData]](512 *1024) {
     override def sizeOf(key: String, value: Option[CacheEntryData]): Int =
       value.flatMap(_.data).fold(0)(_.length) + key.length + 128 // data plus some object overhead
@@ -67,9 +68,7 @@ class CacheStorage extends CachedStorage[String, CacheEntryData] with GtSingleto
 }
 
 object CacheStorage {
-  implicit val factory = new Factory(_ => new CacheStorage)
-
-  def cacheDir(implicit context: GtContext) = returning(new File(Option(context.getExternalCacheDir).getOrElse(context.getCacheDir), "cache_entries")) { dir => dir.mkdirs() }
+  def cacheDir(context: Context) = returning(new File(Option(context.getExternalCacheDir).getOrElse(context.getCacheDir), "cache_entries")) { dir => dir.mkdirs() }
   
   def entryFile(cacheDir: File, uid: Uid) = new File(cacheDir, uid.str.take(2) + File.separator + uid.str)
 }

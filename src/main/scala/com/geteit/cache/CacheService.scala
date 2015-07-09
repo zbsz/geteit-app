@@ -2,9 +2,9 @@ package com.geteit.cache
 
 import java.io._
 
-import com.geteit.inject.{Factory, GtSingleton, Injectable}
 import com.geteit.util.IoUtils
 import com.geteit.util.Log._
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -18,7 +18,7 @@ object Expiration {
   implicit def in(d: Duration) : Expiration = if (d.isFinite()) Expiration(d.toMillis) else Expiration(100L * 3600L * 24L * 365L * 1000L) // 100 years (don't use Long.MaxValue due to overflow dangers)
 }
 
-class CacheService extends GtSingleton with Injectable {
+class CacheService(implicit inj: Injector) extends Injectable {
   private implicit val logTag: LogTag = "CacheService"
   import com.geteit.concurrent.Threading.global
 
@@ -99,6 +99,4 @@ class CacheService extends GtSingleton with Injectable {
 
 object CacheService {
   val DefaultExpiryTime = 7.days
-
-  implicit val factory = new Factory(_ => new CacheService)
 }

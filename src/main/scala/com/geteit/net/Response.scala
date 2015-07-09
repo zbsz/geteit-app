@@ -2,12 +2,13 @@ package com.geteit.net
 
 import java.io.File
 
+import android.content.Context
 import com.geteit.app.GtContext
 import com.geteit.cache.CacheService
-import com.geteit.inject.{Factory, Injectable}
 import com.geteit.net.ResponseConsumer._
 import com.geteit.util.Log._
 import com.koushikdutta.async.http.{Headers => KoushHeaders}
+import com.geteit.inject.{Injectable, Injector}
 
 case class Response(
                      status: Response.Status,
@@ -115,7 +116,7 @@ trait ResponseBodyDecoder {
   def apply(headers: KoushHeaders, contentLength: Long): ResponseConsumer[_ <: ResponseContent]
 }
 
-class DefaultResponseBodyDecoder(implicit context: GtContext) extends ResponseBodyDecoder with Injectable {
+class DefaultResponseBodyDecoder(implicit inj: Injector) extends ResponseBodyDecoder with Injectable {
   val TextContent = "text/.*".r
   val JsonContent = "application/json.*".r
   val ImageContent = "image/.*".r
@@ -135,7 +136,7 @@ class DefaultResponseBodyDecoder(implicit context: GtContext) extends ResponseBo
   }
 }
 
-class RangeResponseBodyDecoder(dst: File)(implicit context: GtContext) extends DefaultResponseBodyDecoder {
+class RangeResponseBodyDecoder(dst: File)(implicit inj: Injector) extends DefaultResponseBodyDecoder {
   private implicit val tag: LogTag = "RangeResponseBodyDecoder"
 
   override def apply(headers: KoushHeaders, contentLength: Long): ResponseConsumer[_ <: ResponseContent] = {
@@ -147,8 +148,4 @@ class RangeResponseBodyDecoder(dst: File)(implicit context: GtContext) extends D
         super.apply(headers, contentLength)
     }
   }
-}
-
-object ResponseBodyDecoder {
-  implicit val factory = new Factory[ResponseBodyDecoder](new DefaultResponseBodyDecoder()(_))
 }

@@ -10,7 +10,8 @@ version := "0.1-SNAPSHOT"
 
 scalaVersion := "2.11.6"
 
-scalacOptions in Compile ++= Seq("-feature", "-language:implicitConversions", "-language:postfixOps", "-target:jvm-1.6")
+javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+scalacOptions in Compile ++= Seq("-feature", "-language:implicitConversions", "-language:postfixOps", "-target:jvm-1.7")
 platformTarget in Android := "android-21"
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"

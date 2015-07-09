@@ -7,15 +7,15 @@ import android.net.Uri
 import android.util.AttributeSet
 import android.widget.ImageView
 import android.widget.ImageView.ScaleType
-import com.geteit.app.{GtContext, R}
-import com.geteit.concurrent.{Threading, CancellableFuture}
+import com.geteit.app.{ViewHelper, GtContext, R}
 import com.geteit.concurrent.CancellableFuture.CancelException
+import com.geteit.concurrent.{CancellableFuture, Threading}
 import com.geteit.events.{Signal, ViewEventContext}
 import com.geteit.image.ImageProvider
-import com.geteit.inject.Injectable
 import com.geteit.util.GtAssert
 import com.geteit.util.Log._
 import com.geteit.view.GtValueAnimator
+import com.geteit.inject.Injectable
 
 import scala.util.{Failure, Success}
 
@@ -83,12 +83,11 @@ class SimpleImageDrawable extends Drawable {
   def getOpacity: Int = if (_alpha == 255) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT
 }
 
-class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends ImageView(context, attrs, style) with Injectable with ViewEventContext {
+class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends ImageView(context, attrs, style) with ViewHelper {
   def this(context: Context) = this(context, null, 0)
   def this(context: Context, attrs: AttributeSet) = this(context, attrs, 0)
 
   private implicit val tag: LogTag = "LazyImageView"
-  implicit private val c = GtContext(context)
 
   private val provider = inject[ImageProvider]
   private val imageDrawable = new SimpleImageDrawable
@@ -96,6 +95,7 @@ class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends I
 
   private var imageUri: Uri = null
   private var task: CancellableFuture[(Bitmap, Boolean)] = CancellableFuture.cancelled()
+  private var filter = Option.empty[Bitmap => Bitmap]
 
   private lazy val loadAnimator = new DrawableLevelAnimator
   private lazy val fadeAnim = new GtValueAnimator onUpdate (imageDrawable.setAlpha(_: Int)) onFinished setBackgroundDrawable(null)
@@ -133,6 +133,10 @@ class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends I
 
   override def setImageURI(uri: Uri) {
     setImageURI(uri, resetOld = true)
+  }
+
+  def setBitmapFilter(filter: Bitmap => Bitmap): Unit = {
+    this.filter = Some(filter)
   }
 
   def setImageURI(uri: Uri, resetOld: Boolean, forceReload: Boolean = false) {
@@ -206,7 +210,9 @@ class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends I
 
         verbose(s"loading $imageUri $getWidth")
 
-        task = provider(imageUri, getWidth)
+        task = filter.fold(provider(imageUri, getWidth)) { filter =>
+          provider(imageUri, getWidth) .map { case (b, i) => (filter(b), false) } (Threading.image)
+        }
         task.onComplete {
           case Success((bitmap, immediate)) =>
             verbose(s"imageLoaded uri: $imageUri, image: ${Option(bitmap).map(b => (b.getWidth, b.getHeight))}, view width: $getWidth")
@@ -233,7 +239,7 @@ class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends I
     }
     task = null
 
-    setImageDrawable(null)
+    setImageResource(android.R.color.transparent)
     image ! null
 
     imageUri = null

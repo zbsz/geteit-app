@@ -3,16 +3,17 @@ package com.geteit.image
 import android.app.ActivityManager
 import android.graphics.Bitmap
 import android.net.Uri
-import com.geteit.events.EventStream
-import com.geteit.inject.{Factory, GtSingleton, Injectable}
+import com.geteit.events.{EventContext, EventStream}
 import com.geteit.util.Log._
 import com.geteit.util.{GtAssert, LruCache}
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.collection.mutable
 
-class MemoryImageCache extends GtSingleton with Injectable {
+class MemoryImageCache(implicit injector: Injector) extends Injectable {
 
     private implicit val tag: LogTag = "MemoryImageCache"
+    private implicit val eventContext = inject[EventContext]
 
     val onInvalidated = new EventStream[Uri]
 
@@ -73,8 +74,4 @@ class MemoryImageCache extends GtSingleton with Injectable {
     def putBitmap(url: String, bitmap: Bitmap) {
         cache.put(url, bitmap)
     }
-}
-
-object MemoryImageCache {
-  implicit val factory = new Factory(_ => new MemoryImageCache)
 }

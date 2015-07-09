@@ -3,11 +3,11 @@ package com.geteit.net
 import java.net.ConnectException
 import java.util.concurrent.atomic.AtomicLong
 
+import android.content.Context
 import android.net.Uri
 import com.geteit.app.GtContext
 import com.geteit.concurrent.CancellableFuture.CancelException
 import com.geteit.concurrent.{CancellableFuture, LimitedExecutionContext}
-import com.geteit.inject.{Factory, GtSingleton, Injectable}
 import com.geteit.net.Request.ProgressCallback
 import com.geteit.net.Response.HttpStatus
 import com.geteit.util.Log._
@@ -16,13 +16,14 @@ import com.koushikdutta.async.callback.DataCallback.NullDataCallback
 import com.koushikdutta.async.callback.{CompletedCallback, DataCallback}
 import com.koushikdutta.async.http._
 import com.koushikdutta.async.http.callback.HttpConnectCallback
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-class AsyncClient extends GtSingleton with Injectable {
+class AsyncClient(implicit inj: Injector) extends Injectable {
   import AsyncClient._
 
   implicit val dispatcher = new LimitedExecutionContext()
@@ -30,7 +31,7 @@ class AsyncClient extends GtSingleton with Injectable {
   lazy val cookies = inject[CookieStorage]
   lazy val bodyDecoder = inject[ResponseBodyDecoder]
 
-  lazy val userAgent = AsyncClient.userAgent
+  lazy val userAgent = AsyncClient.userAgent(inject[Context])
 
   val client = ClientWrapper { new AsyncHttpClient(new AsyncServer) }
 
@@ -156,9 +157,7 @@ object AsyncClient {
   val DefaultTimout = 5.minutes
   val EmptyHeaders = Map[String, String]()
 
-  implicit val factory = new Factory(_ => new AsyncClient)
-
-  def userAgent(implicit context: GtContext) = {
+  def userAgent(implicit context: Context) = {
     import android.os.Build._
     val appVersion = context.getPackageManager.getPackageInfo(context.getPackageName, 0).versionName
     s"${context.getPackageName}/$appVersion (Android ${VERSION.RELEASE}; $MANUFACTURER $MODEL)"

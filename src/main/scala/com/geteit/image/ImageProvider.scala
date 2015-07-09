@@ -5,15 +5,14 @@ import java.io.IOException
 import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.net.Uri
-import com.geteit.app.GtContext
 import com.geteit.bitmap
 import com.geteit.cache.{CacheEntry, CacheService}
 import com.geteit.concurrent.{CancellableFuture, Threading}
-import com.geteit.inject.{Factory, GtContextSingleton, Injectable}
 import com.geteit.net.Response.SuccessHttpStatus
 import com.geteit.net._
 import com.geteit.util.Log._
 import com.geteit.util.Serialized
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.util.control.NoStackTrace
 
@@ -21,11 +20,7 @@ trait ImageProvider {
   def apply(uri: Uri, size: Int): CancellableFuture[(Bitmap, Boolean)]
 }
 
-object ImageProvider {
-  implicit val factory = new Factory[ImageProvider](new BasicImageProvider()(_))
-}
-
-class BasicImageProvider(implicit val context: GtContext) extends ImageProvider with GtContextSingleton with Injectable {
+class BasicImageProvider(implicit injector: Injector) extends ImageProvider with Injectable {
   private implicit val tag: LogTag = "ImageProvider"
   import Threading.image
 
@@ -56,7 +51,7 @@ class BasicImageProvider(implicit val context: GtContext) extends ImageProvider 
       case None =>
         (uri.getScheme match {
           case ContentResolver.SCHEME_CONTENT =>
-            CancellableFuture.lift(cache.addStream(uri.toString, context.getContentResolver.openInputStream(uri))) flatMap resultFromCache
+            CancellableFuture.lift(cache.addStream(uri.toString, inject[ContentResolver].openInputStream(uri))) flatMap resultFromCache
           case "http" | "https" =>
             CancellableFuture.lift(cache.getEntry(uri.toString)) flatMap {
               case Some(entry) => loadCached(entry) flatMap {

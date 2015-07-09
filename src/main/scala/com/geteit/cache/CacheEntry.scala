@@ -2,12 +2,11 @@ package com.geteit.cache
 
 import java.io._
 
-import com.geteit.app.GtContext
-import com.geteit.inject.Injectable
 import com.geteit.util.IoUtils
 import com.geteit.util.Log._
+import com.geteit.inject.{Injectable, Injector}
 
-class CacheEntry(val data: CacheEntryData)(implicit context: GtContext) extends Injectable {
+class CacheEntry(val data: CacheEntryData)(implicit inj: Injector) extends Injectable {
   private implicit val logTag: LogTag = "CacheEntry"
 
   private lazy val service = inject[CacheService]

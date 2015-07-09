@@ -7,18 +7,19 @@ import com.geteit.events
 import com.geteit.events.{EventObserver, EventContext, Signal}
 import com.geteit.util.Log._
 import com.geteit.util.ThrottledProcessingQueue
+import com.geteit.inject.{Injectable, Injector}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-abstract class CachedStorage[K, V](implicit val dao: Dao[K, V]) {
+abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) extends Injectable {
   protected implicit val executionContext = new LimitedExecutionContext
 
   protected val cache: LruCache[K, Option[V]]
 
-  val storage: Storage
+  val storage: Storage = inject[Storage]
 
   val onAdded = new events.EventStream[V]
   val onRemoved = new events.EventStream[K]
