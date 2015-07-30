@@ -92,13 +92,13 @@ object Response {
 
   val EmptyHeaders = new Headers
 
-  class Headers(headers: KoushHeaders = new KoushHeaders()) {
+  class Headers(val headers: KoushHeaders = new KoushHeaders()) {
     import scala.collection.JavaConverters._
     lazy val map = headers.getMultiMap
 
     def apply(key: String): Option[String] = Option(headers.get(key))
 
-    def foreach(key: String)(f: String => Unit): Unit = Option(map.get(key)) foreach { _.iterator().asScala foreach f }
+    def foreach(key: String)(f: String => Unit): Unit = Option(headers.getAll(key)).foreach(_.iterator().asScala foreach f)
 
     override def toString: String = s"Headers[${map.entrySet().asScala map { e => e.getKey -> e.getValue.asScala }}]"
   }
@@ -128,7 +128,7 @@ class DefaultResponseBodyDecoder(implicit inj: Injector) extends ResponseBodyDec
     val contentType = Option(headers.get("Content-Type")).getOrElse("")
 
     contentType match {
-      case JsonContent() => new JsonConsumer(contentLength)
+      case JsonContent() => new StringConsumer(contentLength) // TODO: can we support streaming json? we don't want to fallback to generic DOM ?
       case TextContent() => new StringConsumer(contentLength)
       case _ if contentLength > InMemoryThreshold => new FileConsumer(contentType)(cache)
       case _ => new ByteArrayConsumer(contentLength, contentType)

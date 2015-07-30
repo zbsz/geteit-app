@@ -5,9 +5,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 import android.content.Context
 import android.net.Uri
-import com.geteit.app.GtContext
 import com.geteit.concurrent.CancellableFuture.CancelException
 import com.geteit.concurrent.{CancellableFuture, LimitedExecutionContext}
+import com.geteit.inject.{Injectable, Injector}
 import com.geteit.net.Request.ProgressCallback
 import com.geteit.net.Response.HttpStatus
 import com.geteit.util.Log._
@@ -16,7 +16,6 @@ import com.koushikdutta.async.callback.DataCallback.NullDataCallback
 import com.koushikdutta.async.callback.{CompletedCallback, DataCallback}
 import com.koushikdutta.async.http._
 import com.koushikdutta.async.http.callback.HttpConnectCallback
-import com.geteit.inject.{Injectable, Injector}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
@@ -28,7 +27,6 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
 
   implicit val dispatcher = new LimitedExecutionContext()
 
-  lazy val cookies = inject[CookieStorage]
   lazy val bodyDecoder = inject[ResponseBodyDecoder]
 
   lazy val userAgent = AsyncClient.userAgent(inject[Context])
@@ -39,48 +37,45 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
     debug(s"Starting request: $request")
 
     client .flatMap { client =>
-      CancellableFuture.lift(buildHttpRequest(request)) .flatMap { httpRequest =>
-        val p = Promise[Response]()
-        @volatile var cancelled = false
-        @volatile var processFuture = None: Option[CancellableFuture[_]]
+      val p = Promise[Response]()
+      @volatile var cancelled = false
+      @volatile var processFuture = None: Option[CancellableFuture[_]]
 
-        val httpFuture = client.execute(httpRequest, new HttpConnectCallback {
-          override def onConnectCompleted(ex: Exception, response: AsyncHttpResponse): Unit = {
-            debug(s"Connect completed for uri: '${request.uri}', ex: '$ex', cancelled: $cancelled")
+      val httpFuture = client.execute(buildHttpRequest(request), new HttpConnectCallback {
+        override def onConnectCompleted(ex: Exception, response: AsyncHttpResponse): Unit = {
+          debug(s"Connect completed for uri: '${request.uri}', ex: '$ex', cancelled: $cancelled")
 
-            if (ex != null) p.tryFailure(ex)
-            else {
-              val future = processResponse(request.uri, response, request.decoder.getOrElse(bodyDecoder), request.callback)
-              future.onComplete(p.tryComplete)
+          if (ex != null) p.tryFailure(ex)
+          else {
+            val future = processResponse(request.uri, response, request.decoder.getOrElse(bodyDecoder), request.callback)
+            future.onComplete(p.tryComplete)
 
-              // XXX: order is important here, we first set processFuture and then check cancelled to avoid race condition in cancel callback
-              processFuture = Some(future)
-              if (cancelled) future.cancel()
-            }
+            // XXX: order is important here, we first set processFuture and then check cancelled to avoid race condition in cancel callback
+            processFuture = Some(future)
+            if (cancelled) future.cancel()
           }
-        })
+        }
+      })
 
-        new CancellableFuture(p) {
-          override def cancel(): Boolean = {
-            debug(s"cancelling request: $request")
-            cancelled = true
-            httpFuture.cancel(true)
-            processFuture.foreach(_.cancel())
-            super.cancel()
-          }
-        }.recover(exceptionStatus).withTimeout(request.timeout) // this is a quick fix for AndroidAsync sometimes not properly finishing handling failed requests due to closed keep-alive sockets
-      }
+      new CancellableFuture(p) {
+        override def cancel(): Boolean = {
+          debug(s"cancelling request: $request")
+          cancelled = true
+          httpFuture.cancel(true)
+          processFuture.foreach(_.cancel())
+          super.cancel()
+        }
+      }.recover(exceptionStatus).withTimeout(request.timeout) // this is a quick fix for AndroidAsync sometimes not properly finishing handling failed requests due to closed keep-alive sockets
     }
   }
 
   def close(): Unit = client map { _.getServer.stop() }
 
-  private def buildHttpRequest(req: Request[_]): Future[AsyncHttpRequest] = cookies.header(req.uri) map { cookie =>
+  private def buildHttpRequest(req: Request[_]): AsyncHttpRequest = {
     val r = new AsyncHttpRequest(req.uri, req.httpMethod)
     r.setTimeout(req.timeout.toMillis.toInt)
     req.headers.foreach(p => r.addHeader(p._1, p._2))
     r.setHeader("User-Agent", userAgent)
-    cookie foreach { case (k, v) => r.setHeader(k, v) }
     req.getBody(r)
   }
 
@@ -88,8 +83,6 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
   private def processResponse(uri: Uri, response: AsyncHttpResponse, decoder: ResponseBodyDecoder = bodyDecoder, progressCallback: Option[ProgressCallback]): CancellableFuture[Response] = {
     val httpStatus = HttpStatus(response.code(), response.message())
     val contentLength = HttpUtil.contentLength(response.headers())
-
-    cookies.update(uri, response.headers())
 
     val range = Option(response.headers().get(ContentRange.Header)) match {
       case Some(ContentRange(rng)) => rng
@@ -154,7 +147,7 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
 
 object AsyncClient {
   private implicit val logTag: LogTag = "AsyncClient"
-  val DefaultTimout = 5.minutes
+  val DefaultTimeout = 5.minutes
   val EmptyHeaders = Map[String, String]()
 
   def userAgent(implicit context: Context) = {

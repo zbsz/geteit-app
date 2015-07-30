@@ -38,7 +38,7 @@ libraryDependencies ++= Seq (
   "com.koushikdutta.async" % "androidasync" % "2.1.3",
   "org.scalatest" %% "scalatest" % "2.2.5" % Test,
   "org.scalacheck" %% "scalacheck" % "1.11.6" % Test,
-  "com.geteit" %% "robotest" % "0.8" % Test
+  "com.geteit" %% "robotest" % "0.+" % Test
 )
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0-M5" cross CrossVersion.full)

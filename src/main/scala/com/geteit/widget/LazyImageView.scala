@@ -91,7 +91,7 @@ class LazyImageView(context: Context, attrs: AttributeSet, style: Int) extends I
 
   private val provider = inject[ImageProvider]
   private val imageDrawable = new SimpleImageDrawable
-  val image = new Signal[Bitmap]
+  val image = Signal[Bitmap]()
 
   private var imageUri: Uri = null
   private var task: CancellableFuture[(Bitmap, Boolean)] = CancellableFuture.cancelled()

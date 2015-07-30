@@ -6,7 +6,6 @@ import com.geteit.cache.CacheService
 import com.geteit.util.Log._
 import com.geteit.util._
 import com.koushikdutta.async.ByteBufferList
-import org.json.{JSONArray, JSONObject}
 
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
@@ -15,8 +14,6 @@ sealed trait ResponseContent
 sealed trait JsonResponse extends ResponseContent
 case object EmptyResponse extends ResponseContent
 case class StringResponse(value: String) extends ResponseContent
-case class JsonObjectResponse(value: JSONObject) extends JsonResponse
-case class JsonArrayResponse(value: JSONArray) extends JsonResponse
 case class BinaryResponse(value: Array[Byte], mime: String) extends ResponseContent {
   override def toString: String = s"BinaryResponse(${new String(value.take(1024))}, $mime)"
 }
@@ -55,14 +52,6 @@ object ResponseConsumer {
 
   class StringConsumer(val length: Long) extends InMemoryConsumer[StringResponse] {
     override def result = Success(StringResponse(data.toString("utf8")))
-  }
-
-  class JsonConsumer(val length: Long) extends InMemoryConsumer[JsonResponse] {
-    override def result = Try {
-      val json = data.toString("utf8").trim
-      if (json.startsWith("[")) JsonArrayResponse(new JSONArray(json))
-      else JsonObjectResponse(new JSONObject(json))
-    }
   }
 
   class FileConsumer(mime: String)(cache: CacheService) extends ResponseConsumer[FileResponse] {

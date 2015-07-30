@@ -154,10 +154,10 @@ class DragGesture(context: Context, reactor: TouchReactor, direction: Int = Drag
 
   import DragGesture._
 
-  val onDragStart = new Publisher[(Float, Float)]
-  val onDragEnd = new Publisher[Boolean]
-  val onDrag = new Publisher[(Float, Float)]
-  val onFling = new Publisher[(Float, Float)]
+  val onDragStart = EventStream[(Float, Float)]()
+  val onDragEnd = EventStream[Boolean]()
+  val onDrag = EventStream[(Float, Float)]()
+  val onFling = EventStream[(Float, Float)]()
   var startPos = new Point(0, 0)
   var dragging = false
 
@@ -177,7 +177,7 @@ class DragGesture(context: Context, reactor: TouchReactor, direction: Int = Drag
     if (onDragStart.hasSubscribers || onDrag.hasSubscribers || onFling.hasSubscribers) {
       startPos.set(ev.getX, ev.getY)
       var velocityTracker: VelocityTracker = null
-      var dragObserver: EventObserver[MotionEvent] = null
+      var dragObserver: Subscription = null
 
       def shouldStartDrag(x: Float, y: Float) = {
         direction match {

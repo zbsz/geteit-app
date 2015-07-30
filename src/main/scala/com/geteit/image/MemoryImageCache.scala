@@ -3,31 +3,33 @@ package com.geteit.image
 import android.app.ActivityManager
 import android.graphics.Bitmap
 import android.net.Uri
+import com.geteit.concurrent.LimitedExecutionContext
 import com.geteit.events.{EventContext, EventStream}
+import com.geteit.inject.{Injectable, Injector}
 import com.geteit.util.Log._
 import com.geteit.util.{GtAssert, LruCache}
-import com.geteit.inject.{Injectable, Injector}
 
 import scala.collection.mutable
+import scala.concurrent.Future
 
 class MemoryImageCache(implicit injector: Injector) extends Injectable {
-
+    private implicit val dispatcher = new LimitedExecutionContext()
     private implicit val tag: LogTag = "MemoryImageCache"
     private implicit val eventContext = inject[EventContext]
 
-    val onInvalidated = new EventStream[Uri]
+    val onInvalidated = EventStream[Uri]()
 
     private val cache = new LruCache[String, Bitmap]((inject[ActivityManager].getMemoryClass - 4) * 1024 * 1024 / 6) { // 2Mb on base android devices (with 16Mb ram limit)
         override def sizeOf(key: String, value: Bitmap) = value.getRowBytes * value.getHeight
     }
 
-    private val imageKeys = new mutable.HashMap[Uri, mutable.HashSet[String]]
+    private val imageKeys = new mutable.HashMap[Uri, mutable.Set[String]] with mutable.MultiMap[Uri, String]
 
     def put(imageUri: Uri, key: String, image: Bitmap) = {
         GtAssert(image != null)
         GtAssert(image != BitmapUtils.EMPTY_BITMAP)
 
-        imageKeys.getOrElseUpdate(imageUri, new mutable.HashSet[String]) add key
+        Future { imageKeys.addBinding(imageUri, key) }
 
         cache.put(key, image)
     }
@@ -61,10 +63,13 @@ class MemoryImageCache(implicit injector: Injector) extends Injectable {
     def invalidate(imageUri: Uri) {
         verbose(s"invalidate $imageUri")
 
-        imageKeys.remove(imageUri).foreach(_.foreach { key =>
+        Future {
+          imageKeys.remove(imageUri).foreach(_.foreach { key =>
             verbose(s"invalidate: $key")
             cache.remove(key)
-        })
+          })
+        }
+
 
         onInvalidated ! imageUri
     }

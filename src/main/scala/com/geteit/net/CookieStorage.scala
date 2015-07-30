@@ -4,7 +4,7 @@ import java.text.SimpleDateFormat
 import java.util.{Date, Locale, TimeZone}
 
 import android.net.Uri
-import com.geteit.concurrent.LimitedExecutionContext
+import com.geteit.concurrent.{Threading, LimitedExecutionContext}
 import com.geteit.json.Json
 import com.geteit.net.CookieStorage.{Cookie, CookieSet}
 import com.geteit.util.Log._
@@ -17,8 +17,15 @@ import scala.concurrent.Future
 import scala.util.Try
 
 trait CookieStorage {
-  def header(uri: Uri): Future[Option[(String, String)]]
-  def update(uri: Uri, headers: Headers): Unit
+  def header(uri: Uri): Future[Option[(String, String)]] = getCookies(uri.getAuthority) .map { cs => if (cs.isEmpty) None else Some("Cookie" -> Cookie.headerValue(cs)) } (Threading.global)
+  def update(uri: Uri, headers: Headers): Unit = {
+    Option(headers.getAll("Set-Cookie")).foreach { headers =>
+      setCookies(uri.getAuthority, headers.asScala.collect { case Cookie(c) => c })
+    }
+  }
+
+  def getCookies(authority: String): Future[Seq[Cookie]]
+  def setCookies(authority: String, cs: Seq[Cookie]): Unit
 }
 
 class MemoryCookieStorage extends CookieStorage {
@@ -27,20 +34,16 @@ class MemoryCookieStorage extends CookieStorage {
 
   val cookies = new mutable.HashMap[String, CookieSet]
 
-  override def header(uri: Uri) = Future { cookies.get(uri.getAuthority).map(cs => "Cookie" -> cs.headerValue) }
-
-  override def update(uri: Uri, headers: Headers): Unit = Future {
-    val cs = cookies.getOrElseUpdate(uri.getAuthority, new CookieSet())
-    Option(headers.getAll("Set-Cookie")).foreach {
-      _.asScala foreach {
-        case Cookie(c) => cs += c
-        case header => warn(s"unexpected cookie header: $header")
-      }
-    }
+  override def getCookies(authority: String): Future[Seq[Cookie]] = Future { cookies.get(authority).map(_.cookies.values.toSeq).getOrElse(Nil) }
+  override def setCookies(authority: String, cs: Seq[Cookie]): Unit = Future {
+    val set = cookies.getOrElseUpdate(authority, new CookieSet())
+    cs foreach { set += _ }
+    set.deleteExpired()
   }
 }
 
 object CookieStorage {
+
   @Json
   case class Cookie(key: String, value: String, expires: Date) {
     def expired = expires.before(new Date)
@@ -60,6 +63,8 @@ object CookieStorage {
         exp <- expires
       } yield Cookie(k, v, exp)
     } .getOrElse(None)
+
+    def headerValue(cs: Traversable[Cookie]) = cs.filterNot(_.expired).map(c => c.key + "=" + c.value).mkString("; ")
   }
 
   case class CookieSet(cookies: mutable.HashMap[String, Cookie] = new mutable.HashMap) {
@@ -71,6 +76,10 @@ object CookieStorage {
 
     def deleteExpired() = cookies.find(_._2.expired).toSeq foreach { case (k, _) => cookies.remove(k) }
 
-    def headerValue = cookies.valuesIterator.filterNot(_.expired).map(c => c.key + "=" + c.value).mkString("; ")
+    def headerValue = Cookie.headerValue(cookies.values)
+  }
+
+  object CookieSet {
+    def apply(cs: Traversable[(String, Cookie)]): CookieSet = new CookieSet(new mutable.HashMap[String, Cookie] ++= cs)
   }
 }

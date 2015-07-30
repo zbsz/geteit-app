@@ -1,5 +1,7 @@
 package com.geteit.inject
 
+import android.content.{Context, SharedPreferences}
+import android.preference.PreferenceManager
 import com.geteit.cache.{CacheStorage, CacheService}
 import com.geteit.image.{BasicImageProvider, ImageProvider, MemoryImageCache}
 import com.geteit.net._
@@ -14,5 +16,6 @@ object GtAppModule {
     bind [AsyncClient] to new AsyncClient
     bind [CookieStorage] to new MemoryCookieStorage
     bind [ResponseBodyDecoder] to new DefaultResponseBodyDecoder
+    bind [SharedPreferences] to { PreferenceManager.getDefaultSharedPreferences(bind.inject[Context]) }
   }
 }

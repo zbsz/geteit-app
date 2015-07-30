@@ -3,11 +3,10 @@ package com.geteit.db
 import android.database.sqlite.SQLiteDatabase
 import android.support.v4.util.LruCache
 import com.geteit.concurrent.{LimitedExecutionContext, Threading}
-import com.geteit.events
-import com.geteit.events.{EventObserver, EventContext, Signal}
+import com.geteit.events.{Subscription, EventStream, EventContext, Signal}
+import com.geteit.inject.{Injectable, Injector}
 import com.geteit.util.Log._
 import com.geteit.util.ThrottledProcessingQueue
-import com.geteit.inject.{Injectable, Injector}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -21,9 +20,9 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
 
   val storage: Storage = inject[Storage]
 
-  val onAdded = new events.EventStream[V]
-  val onRemoved = new events.EventStream[K]
-  val onUpdated = new events.EventStream[(V, V)] // (prev, current)
+  val onAdded = EventStream[V]()
+  val onRemoved = EventStream[K]()
+  val onUpdated = EventStream[(V, V)]() // (prev, current)
 
   private var loadFuture = Future.successful(Option.empty[V])
 
@@ -53,9 +52,9 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
     }
   }
 
-  def find(predicate: V => Boolean, fallback: SQLiteDatabase => Traversable[K]): Future[Set[K]] = {
-    val dbSearch = storage(fallback)
-    val cached = Future { cache.snapshot.asScala.collect { case (k, Some(v)) if predicate(v) => k }.toSet }
+  def find(matcher: Matcher[V]): Future[Set[K]] = {
+    val dbSearch = storage { dao.find(matcher.whereSql)(_) }
+    val cached = Future { cache.snapshot.asScala.collect { case (k, Some(v)) if matcher(v) => k }.toSet }
     dbSearch.flatMap(d => cached.map(_ ++ d))
   }
 
@@ -147,14 +146,14 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
 
   def signal(id: K)(implicit ev: EventContext): Signal[V] = new Signal[V]() {
 
-    def reload() = self.get(id).map { _.foreach(this ! _) }
+    def reload() = self.get(id).map { _.foreach(this.publish) }
 
-    private var observers = Seq.empty[EventObserver[_]]
+    private var observers = Seq.empty[Subscription]
 
     override protected def onWire(): Unit = {
       observers = Seq(
-        onAdded.filter(v => dao.getId(v) == id) { this ! _ }, // FIXME: possible race condition with reload result
-        onUpdated.filter(p => dao.getId(p._2) == id) { case (_, v) => this ! v },
+        onAdded.filter(v => dao.getId(v) == id) { publish }, // FIXME: possible race condition with reload result
+        onUpdated.filter(p => dao.getId(p._2) == id) { case (_, v) => publish(v) },
         onRemoved.filter(_ == id) { _ => reload() }
       )
       reload()
@@ -168,33 +167,33 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
 
   def findSignal(matcher: Matcher[V])(implicit ev: EventContext): Signal[Set[K]] = new Signal[Set[K]] {
 
-    def reload() = {
+    def reload(): Unit = {
       verbose(s"reload ${matcher.whereSql}")
       storage { dao.find(matcher.whereSql)(_) } onSuccess {
         case ids =>
           verbose(s"found: $ids")
-          this ! (value.getOrElse(Set.empty) ++ ids)
+          publish(value.getOrElse(Set.empty) ++ ids)
       }
     }
 
-    private var observers = Seq.empty[EventObserver[_]]
+    private var observers = Seq.empty[Subscription]
 
     override protected def onWire(): Unit = {
       value = None
       observers = Seq(
         // FIXME: possible race conditions - on every upate
         onAdded { v =>
-          if (matcher(v)) this ! (value.getOrElse(Set.empty) + dao.getId(v))
+          if (matcher(v)) publish(value.getOrElse(Set.empty) + dao.getId(v))
         },
         onUpdated {
           case (prev, up) =>
             (matcher(prev), matcher(up)) match {
-              case (true, false) => value foreach { s => this ! (s - dao.getId(prev)) }
-              case (false, true) => this ! value.getOrElse(Set.empty) + dao.getId(up)
+              case (true, false) => value foreach { s => this.publish(s - dao.getId(prev)) }
+              case (false, true) => publish(value.getOrElse(Set.empty) + dao.getId(up))
               case _ =>
             }
         },
-        onRemoved { id => value foreach { s => this ! (s - id) } }
+        onRemoved { id => value foreach { s => publish(s - id) } }
       )
       reload()
     }

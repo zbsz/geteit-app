@@ -24,7 +24,7 @@ case class Request[A: ContentEncoder](
                                        decoder: Option[ResponseBodyDecoder] = None,
                                        callback: Option[ProgressCallback] = None,
                                        headers: Map[String, String] = Request.EmptyHeaders,
-                                       timeout: FiniteDuration = AsyncClient.DefaultTimout
+                                       timeout: FiniteDuration = AsyncClient.DefaultTimeout
                                      ) {
 
 
@@ -42,7 +42,7 @@ object Request {
 
   val EmptyHeaders = Map[String, String]()
 
-  def Post[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders, timeout: FiniteDuration = AsyncClient.DefaultTimout) =
+  def Post[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders, timeout: FiniteDuration = AsyncClient.DefaultTimeout) =
     Request[A](uri, PostMethod, data = Some(data), headers = headers, timeout = timeout)
 
   def Put[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders) =
