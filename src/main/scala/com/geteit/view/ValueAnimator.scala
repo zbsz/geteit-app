@@ -3,10 +3,12 @@ package com.geteit.view
 import android.content.Context
 import android.os.{Looper, SystemClock}
 import android.view.View
+import android.view.animation.LinearInterpolator
 import com.geteit.util.{GtObjHandler, MathUtils}
 import com.nineoldandroids.animation.Animator.AnimatorListener
 import com.nineoldandroids.animation.ValueAnimator.AnimatorUpdateListener
 import com.nineoldandroids.animation.{ValueAnimator, AnimatorListenerAdapter, Animator}
+import com.geteit.util.Log._
 
 object GtValueAnimator {
 }
@@ -50,11 +52,22 @@ class GtValueAnimator(duration: Long = 300) {
         this
     }
 
-    def startInt(values: Int*) = {
+    def startInt(start: Int, end: Int) = {
 //        GtAssert.assertUIThread()
 
-        if (values.nonEmpty) anim.setIntValues(values: _*)
+        anim.setIntValues(start, end)
         anim.start()
+        this
+    }
+
+    def updateInt(start: Int, end: Int) = {
+        if (anim.isRunning) {
+          val value = anim.getAnimatedValue.asInstanceOf[Int]
+          val values = anim.getValues
+        } else {
+          anim.setIntValues(start, end)
+          anim.start()
+        }
         this
     }
 
@@ -70,6 +83,53 @@ class GtValueAnimator(duration: Long = 300) {
     }
     
     def isRunning = anim.isRunning
+}
+
+class ContinuousValueAnimator(var start: Long, onUpdate: Long => Unit) extends AnimatorUpdateListener {
+  private implicit val tag: LogTag = "ContinuousValueAnimator"
+
+  lazy val anim = {
+    val a = new ValueAnimator
+    a.addUpdateListener(this)
+    a.setInterpolator(new LinearInterpolator())
+    a.setFloatValues(0f, 1f)
+    a
+  }
+
+  var current: Long = start
+  var target: Long = 0
+
+  def cancel() = if (anim.isRunning) anim.cancel()
+
+  def set(value: Long) = {
+    cancel()
+    current = value
+    onUpdate(current)
+  }
+
+  def animateTo(target: Long) = {
+    this.target = target
+    if (anim.isRunning) {
+      val duration = anim.getDuration
+      val shouldContinue = (current > start && target >= current) || (current < start && target <= current)
+      if (shouldContinue) {
+        val time = ((current - start).toFloat / (target - start) * duration).toLong
+        anim.setCurrentPlayTime(time)
+      } else {
+        anim.cancel()
+        start = current
+        anim.start()
+      }
+    } else {
+      start = current
+      anim.start()
+    }
+  }
+
+  override def onAnimationUpdate(animation: ValueAnimator): Unit = {
+    current = start + ((target - start) * animation.getAnimatedFraction + .5).toLong
+    onUpdate(current)
+  }
 }
 
 class FadeAnimator(view: View, duration: Long = 300, hiddenVisibility: Int = View.GONE) extends GtValueAnimator(duration) {

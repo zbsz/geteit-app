@@ -85,7 +85,39 @@ class Point(var x: Float, var y: Float) {
     this
   }
 
-  def dst(x: Float, y: Float) = math.sqrt((x - this.x) * (x - this.x) + (y - this.y) * (y - this.y)).toFloat
+  def angle = Point.angle(x, y)
+
+  def dot(p: Point): Float = dot(p.x, p.y)
+
+  def dot(x: Float, y: Float): Float = x * this.x + y * this.y
+
+  def len2 = x * x + y * y
+
+  def len = math.sqrt(len2)
+
+  def dst(x: Float, y: Float) = math.sqrt(dst2(x, y)).toFloat
+
+  def dst2(x: Float, y: Float) = (x - this.x) * (x - this.x) + (y - this.y) * (y - this.y)
+
+  def rotate(degrees: Float): Point = {
+    val rad = degrees * 0.017453292F
+    val cos = math.cos(rad).toFloat
+    val sin = math.sin(rad).toFloat
+    val newX = x * cos - y * sin
+    val newY = x * sin + y * cos
+    x = newX
+    y = newY
+    this
+  }
+
+  override def toString = s"Point($x, $y)"
+}
+
+object Point {
+  def angle(x: Float, y: Float) = {
+    val a = math.atan2(y, x).toFloat * 57.295776F
+    if (a < 0) a + 360 else a
+  }
 }
 
 class ClickGesture(context: Context, reactor: TouchReactor, longClickTimeout: FiniteDuration = 500.millis)(implicit eventContext: EventContext) {
@@ -141,16 +173,16 @@ class ClickGesture(context: Context, reactor: TouchReactor, longClickTimeout: Fi
 }
 
 object DragGesture {
-  val NONE = 0
   val HORIZONTAL = 1
   val VERTICAL = 2
+  val BOTH = HORIZONTAL | VERTICAL
 
-  private def isHorizontal(dir: Int) = dir == NONE || dir == HORIZONTAL
+  private def isHorizontal(dir: Int) = (dir & HORIZONTAL) != 0
 
-  private def isVertical(dir: Int) = dir == NONE || dir == VERTICAL
+  private def isVertical(dir: Int) = (dir & VERTICAL) != 0
 }
 
-class DragGesture(context: Context, reactor: TouchReactor, direction: Int = DragGesture.NONE)(implicit eventContext: EventContext) {
+class DragGesture(context: Context, reactor: TouchReactor, direction: Int = DragGesture.BOTH)(implicit eventContext: EventContext) {
 
   import DragGesture._
 
@@ -166,6 +198,8 @@ class DragGesture(context: Context, reactor: TouchReactor, direction: Int = Drag
   private val minimumVelocity = configuration.getScaledMinimumFlingVelocity
   private val maximumVelocity = configuration.getScaledMaximumFlingVelocity
 
+  protected def hit(x: Float, y: Float) = true
+
   reactor.onDown { ev: MotionEvent =>
     dragging = false
 
@@ -174,19 +208,18 @@ class DragGesture(context: Context, reactor: TouchReactor, direction: Int = Drag
       onDragEnd ! dragged
     }
 
-    if (onDragStart.hasSubscribers || onDrag.hasSubscribers || onFling.hasSubscribers) {
+    if ((onDragStart.hasSubscribers || onDrag.hasSubscribers || onFling.hasSubscribers) && hit(ev.getX, ev.getY)) {
       startPos.set(ev.getX, ev.getY)
       var velocityTracker: VelocityTracker = null
       var dragObserver: Subscription = null
 
       def shouldStartDrag(x: Float, y: Float) = {
         direction match {
-          case NONE => startPos.dst(ev.getX, ev.getY) > touchSlop
+          case BOTH => startPos.dst(ev.getX, ev.getY) > touchSlop
           case VERTICAL => math.abs(ev.getY - startPos.y) > touchSlop && math.abs((ev.getY - startPos.y) / (ev.getX - startPos.x)) > 2 || math.abs(ev.getY - startPos.y) > 2 * touchSlop
           case HORIZONTAL => math.abs(ev.getX - startPos.x) > touchSlop && math.abs((ev.getX - startPos.x) / (ev.getY - startPos.y)) > 2 || math.abs(ev.getX - startPos.x) > 2 * touchSlop
         }
       }
-
       dragObserver = reactor.onDrag { ev: MotionEvent =>
         if (!dragging && shouldStartDrag(ev.getX, ev.getY)) {
           onDragStart !(ev.getX, ev.getY)
