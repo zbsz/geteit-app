@@ -69,14 +69,24 @@ trait Matcher[A] {
 
 object Matcher {
 
+  def all[A] = new Matcher[A] {
+    override val whereSql: String = "1 = 1"
+    override def apply(item: A): Boolean = true
+  }
+
   def like[A](index: Index[A, String])(query: String): Matcher[A] = new Matcher[A] {
     override val whereSql: String = s"${index.name} LIKE '%$query%'"
     override def apply(item: A): Boolean = index(item).contains(query)
   }
 
   def equal[A, B](index: Index[A, B])(v: B): Matcher[A] = new Matcher[A] {
-    override val whereSql: String =  s"${index.name} = ${index.dbType.literal(v)}"
+    override val whereSql: String = s"${index.name} = ${index.dbType.literal(v)}"
     override def apply(item: A): Boolean = index(item) == v
+  }
+
+  def in[A, B](index: Index[A, B])(v: Set[B]): Matcher[A] = new Matcher[A] {
+    override val whereSql: String = s"${index.name} in (${v.map(index.dbType.literal).mkString(",")})"
+    override def apply(item: A): Boolean = v(index(item))
   }
 }
 

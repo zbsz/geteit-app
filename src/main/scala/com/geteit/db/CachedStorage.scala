@@ -3,7 +3,8 @@ package com.geteit.db
 import android.database.sqlite.SQLiteDatabase
 import android.support.v4.util.LruCache
 import com.geteit.concurrent.{LimitedExecutionContext, Threading}
-import com.geteit.events.{Subscription, EventStream, EventContext, Signal}
+import com.geteit.db.CachedStorageSignal.{Cmd, Del, Add}
+import com.geteit.events._
 import com.geteit.inject.{Injectable, Injector}
 import com.geteit.util.Log._
 import com.geteit.util.ThrottledProcessingQueue
@@ -68,6 +69,8 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
   def getOrCreate(key: K, creator: => V): Future[V] = get(key) map { value =>
     value.orElse(Option(cache.get(key)).flatten).getOrElse { addInternal(key, creator) }
   }
+
+  def getAll = storage { dao.find("1 = 1")(_) } flatMap { ids => Future.traverse(ids)(get) } map { _.flatten }
 
   def getAll(keys: Seq[K]): Future[Seq[Option[V]]] = {
     val cachedEntries = keys.flatMap { key => Option(cache.get(key)) map { value => (key, value) } }.toMap
@@ -142,7 +145,19 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
 
 trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
   import Threading.global
+  import collection.breakOut
   private implicit val tag: LogTag = "CachedStorageSignal"
+
+  private lazy val onChanged = EventStream.union[Cmd[K, V]](onAdded.map(Add(_)), onUpdated.map(p => Add(p._2)), onRemoved.map(Del(_)))
+
+  private def loadAll: Future[Map[K, V]] = getAll map { _.map(v => dao.getId(v) -> v)(breakOut) }
+
+  def all(implicit ev: EventContext): Signal[Map[K, V]] = new AggregatingSignal[Cmd[K, V], Map[K, V]](onChanged, loadAll, { (values, cmd) =>
+    cmd match {
+      case Add(v) => values + (dao.getId(v) -> v)
+      case Del(k) => values - k
+    }
+  })
 
   def signal(id: K)(implicit ev: EventContext): Signal[V] = new Signal[V]() {
 
@@ -204,4 +219,10 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
       value = None
     }
   }
+}
+
+object CachedStorageSignal {
+  trait Cmd[+K, +V]
+  case class Add[A](v: A) extends Cmd[Nothing, A]
+  case class Del[A](v: A) extends Cmd[A, Nothing]
 }

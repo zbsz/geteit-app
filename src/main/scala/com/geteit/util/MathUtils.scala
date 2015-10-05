@@ -43,6 +43,12 @@ object MathUtils {
     angle
   }
 
+  def getAngle(x: Float, y: Float): Float = {
+    var angle: Float = Math.atan2(y, x).toFloat
+    if (angle < 0) angle += TWO_PI
+    angle
+  }
+
   /**
    * @param angle - angle in radians
    * @return
