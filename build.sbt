@@ -6,16 +6,19 @@ android.Plugin.androidBuildAar
 
 name := "geteit-app"
 organization := "com.geteit"
-version := "0.1-SNAPSHOT"
+version := "0.1"
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.11.7"
 
 javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
 scalacOptions in Compile ++= Seq("-feature", "-language:implicitConversions", "-language:postfixOps", "-target:jvm-1.7")
 platformTarget in Android := "android-21"
 
-resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
-resolvers += "geteit releases" at "https://raw.github.com/zbsz/mvn-repo/master/releases/"
+resolvers ++= Seq(
+  Resolver.mavenLocal,
+  Resolver.sonatypeRepo("snapshots"),
+  Resolver.sonatypeRepo("releases")
+)
 
 fork in Test := true
 publishArtifact in (Compile, packageDoc) := false
@@ -34,7 +37,7 @@ libraryDependencies ++= Seq (
   "com.android.support" % "cardview-v7" % supportLibVersion,
   "com.android.support" % "recyclerview-v7" % supportLibVersion,
   "com.nineoldandroids" % "library" % "2.4.0",
-  "com.geteit" %% "geteit-utils" % "0.3-SNAPSHOT",
+  "com.geteit" %% "geteit-utils" % "0.3",
   "com.koushikdutta.async" % "androidasync" % "2.1.3",
   "org.scalatest" %% "scalatest" % "2.2.5" % Test,
   "org.scalacheck" %% "scalacheck" % "1.11.6" % Test,
@@ -42,4 +45,3 @@ libraryDependencies ++= Seq (
 )
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0-M5" cross CrossVersion.full)
-
