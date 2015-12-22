@@ -1,7 +1,8 @@
 package com.geteit.db
 
-import android.database.Cursor
+import android.database.{DatabaseUtils, Cursor}
 import android.database.sqlite.{SQLiteProgram, SQLiteDatabase, SQLiteStatement}
+import com.geteit.db.DbType.Text
 import com.geteit.json.{JsonDecoder, JsonEncoder}
 import com.geteit.util.returning
 
@@ -79,9 +80,19 @@ object Matcher {
     override def apply(item: A): Boolean = index(item).contains(query)
   }
 
+  def startsWith[A](index: Index[A, String])(prefix: String): Matcher[A] = new Matcher[A] {
+    override val whereSql: String = s"${index.name} LIKE '$prefix%'"
+    override def apply(item: A): Boolean = index(item).startsWith(prefix)
+  }
+
   def equal[A, B](index: Index[A, B])(v: B): Matcher[A] = new Matcher[A] {
     override val whereSql: String = s"${index.name} = ${index.dbType.literal(v)}"
     override def apply(item: A): Boolean = index(item) == v
+  }
+
+  def less[A, B: Ordering](index: Index[A, B])(v: B): Matcher[A] = new Matcher[A] {
+    override val whereSql: String = s"${index.name} < ${index.dbType.literal(v)}"
+    override def apply(item: A): Boolean = implicitly[Ordering[B]].compare(v, index(item)) < 0
   }
 
   def in[A, B](index: Index[A, B])(v: Set[B]): Matcher[A] = new Matcher[A] {
@@ -97,8 +108,12 @@ abstract class Dao[I: Id, A: JsonDecoder : JsonEncoder] {
   private val encoder = implicitly[JsonEncoder[A]]
   private val _id = implicitly[Id[I]]
 
-  private val IdIndex = 0
   private val DataIndex = 1
+
+  lazy val IdIndex = new Index[A, I]("_id", {_ => null.asInstanceOf[I] })(new DbType[I] with Text {
+    override def literal(v: I): String = s"'${_id.encode(v)}'"
+    override def bind(stmt: SQLiteProgram, pos: Int, v: I): Unit = stmt.bindString(pos, _id.encode(v))
+  })
 
   val table: Table
   def getId(v: A): I
@@ -120,7 +135,9 @@ abstract class Dao[I: Id, A: JsonDecoder : JsonEncoder] {
   lazy val insertOrReplaceSql = s"INSERT OR REPLACE $insertSql"
   lazy val insertOrIgnoreSql = s"INSERT OR IGNORE $insertSql"
 
-  protected[db] def decode(c: Cursor) = decoder(c.getString(DataIndex))
+  def decodeId(c: Cursor) = _id.decode(c.getString(0))
+
+  def decode(c: Cursor) = decoder(c.getString(DataIndex))
 
   protected[db] def single(c: Cursor) = try {
     if (c.moveToFirst()) Some(decode(c)) else None
@@ -140,14 +157,20 @@ abstract class Dao[I: Id, A: JsonDecoder : JsonEncoder] {
   def query[K](ind: Index[A, K], value: K)(implicit db: SQLiteDatabase): Cursor =
     db.query(table.name, null, s"${ind.name} = ${ind.dbType.literal(value)}", null, null, null, null)
 
-  def find[K](whereSql: String)(implicit db: SQLiteDatabase): Seq[I] = {
-    val c = db.query(table.name, Array("_id"), whereSql, null, null, null, null)
+  def query(whereSql: String)(implicit db: SQLiteDatabase): Cursor =
+    db.query(table.name, null, whereSql, null, null, null, null)
+
+  def find(whereSql: String)(implicit db: SQLiteDatabase): Seq[I] = {
+    val c = query(whereSql)
     try {
       val builder = Seq.newBuilder[I]
       while (c.moveToNext()) builder += _id.decode(c.getString(0))
       builder.result()
     } finally c.close()
   }
+
+  def count(whereSql: String)(implicit db: SQLiteDatabase): Long =
+    db.compileStatement(s"select count(*) from ${table.name} where $whereSql;").simpleQueryForLong()
 
   def insert(item: A)(implicit db: SQLiteDatabase): A = {
     insert(Seq(item))
@@ -185,15 +208,7 @@ abstract class Dao[I: Id, A: JsonDecoder : JsonEncoder] {
 
 object Dao {
 
-  def inTransaction[A](body: => A)(implicit db: SQLiteDatabase): A =
-    if (db.inTransaction()) body
-    else {
-      db.beginTransaction()
-      try {
-        returning(body) { _ => db.setTransactionSuccessful() }
-      } finally
-        db.endTransaction()
-    }
+  def inTransaction[A](body: => A)(implicit db: SQLiteDatabase): A = Storage.inTransaction(body)
 
   def withStatement[A](sql: String)(body: SQLiteStatement => A)(implicit db: SQLiteDatabase): A = {
     val stmt = db.compileStatement(sql)
