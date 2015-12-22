@@ -9,7 +9,7 @@ import com.geteit.net._
 
 object GtAppModule {
 
-  def apply() = Module { implicit bind =>
+  def apply() = new Module {
     bind [MemoryImageCache] to new MemoryImageCache
     bind [ImageProvider] to new BasicImageProvider
     bind [CacheService] to new CacheService
@@ -18,6 +18,6 @@ object GtAppModule {
     bind [CookieStorage] to new MemoryCookieStorage
     bind [KeyValueStorage] to new KeyValueStorage
     bind [ResponseBodyDecoder] to new DefaultResponseBodyDecoder
-    bind [SharedPreferences] to { PreferenceManager.getDefaultSharedPreferences(bind.inject[Context]) }
+    bind [SharedPreferences] to { PreferenceManager.getDefaultSharedPreferences(inject[Context]) }
   }
 }
