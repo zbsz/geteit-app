@@ -16,6 +16,7 @@ import scala.concurrent.Future
 import scala.util.Try
 
 abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) extends Injectable {
+  private implicit val tag: LogTag = "CachedStorage"
   protected implicit val executionContext = new LimitedExecutionContext
 
   protected val cache: LruCache[K, Option[V]]
@@ -52,7 +53,7 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
   def add(item: V) = addInternal(dao.getId(item), item)
 
   def get(key: K): Future[Option[V]] = cachedOrElse(key, Future {
-    loadFuture = loadFuture recover { case _ => () } flatMap { _ => cachedOrElse(key, loadFromDb(key)) }
+    loadFuture = loadFuture recover { case t: Throwable => error("loadFuture failed", t) } flatMap { _ => cachedOrElse(key, loadFromDb(key)) }
     loadFuture
   }.flatMap(identity))
 
@@ -148,9 +149,12 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
   }
 
   private def addInternal(key: K, value: V): Future[V] = {
-    cache.put(key, Some(value))
-    returning(storage { dao.insert(Seq(value))(_) } .map { _ => value }) { _ =>
-      onAdded ! Seq(value)
+    cache.put(key, Some(value)) match {
+      case Some(`value`) => Future successful value
+      case _ =>
+        returning(storage { dao.insert(Seq(value))(_) }.map { _ => value }) { _ =>
+          onAdded ! Seq(value)
+        }
     }
   }
 
