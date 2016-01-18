@@ -10,7 +10,7 @@ import com.geteit.net.Request.ProgressCallback
 import com.geteit.util.{IoUtils, _}
 import com.koushikdutta.async.callback.CompletedCallback
 import com.koushikdutta.async.http.AsyncHttpRequest
-import com.koushikdutta.async.http.body.{AsyncHttpRequestBody, MultipartFormDataBody}
+import com.koushikdutta.async.http.body.{FilePart, Part, AsyncHttpRequestBody, MultipartFormDataBody}
 import com.koushikdutta.async.{DataEmitter, DataSink, Util}
 import org.json.JSONObject
 import com.geteit.inject.Injector
@@ -42,8 +42,8 @@ object Request {
 
   val EmptyHeaders = Map[String, String]()
 
-  def Post[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders, timeout: FiniteDuration = AsyncClient.DefaultTimeout) =
-    Request[A](uri, PostMethod, data = Some(data), headers = headers, timeout = timeout)
+  def Post[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders, timeout: FiniteDuration = AsyncClient.DefaultTimeout, decoder: Option[ResponseBodyDecoder] = None) =
+    Request[A](uri, PostMethod, data = Some(data), headers = headers, timeout = timeout, decoder = decoder)
 
   def Put[A: ContentEncoder](uri: Uri, data: A, headers: Map[String, String] = EmptyHeaders) =
     Request[A](uri, PutMethod, data = Some(data), headers = headers)
@@ -149,12 +149,17 @@ object ContentEncoder {
     })
   }
 
-  case class MultipartRequestContent(files: Seq[(String, File)]) extends RequestContent {
+  class MultipartRequestContent(parts: Seq[Part], contentType: String = MultipartFormDataBody.CONTENT_TYPE) extends RequestContent {
     override def asyncHttpBody = Some(returning(new MultipartFormDataBody()) { mp =>
-      files.foreach {
-        case (name, file) => mp.addFilePart(name, file)
-      }
+      mp.setContentType(contentType)
+      parts.foreach(mp.addPart)
     })
+
+    override def toString: String = s"MultipartRequestContent($parts, $contentType)"
+  }
+
+  object MultipartRequestContent {
+    def apply(files: Seq[(String, File)]): MultipartRequestContent = new MultipartRequestContent(files.map { case (name, file) => new FilePart(name, file) })
   }
 
   implicit object RequestContentEncoder extends ContentEncoder[RequestContent] {
