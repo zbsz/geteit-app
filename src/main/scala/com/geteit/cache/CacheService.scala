@@ -19,16 +19,19 @@ object Expiration {
 }
 
 class CacheService(implicit inj: Injector) extends Injectable {
-  private implicit val logTag: LogTag = "CacheService"
+  import CacheService._
   import com.geteit.concurrent.Threading.global
 
   val storage = inject[CacheStorage]
 
   def createForFile(key: String = Uid().str)(implicit timeout: Expiration = CacheService.DefaultExpiryTime): CacheEntry = add(CacheEntryData(key))
 
-  def addData(key: String, data: Array[Byte])(implicit timeout: Expiration = CacheService.DefaultExpiryTime): CacheEntry = {
-    add(key, Left(data))(timeout)
-  }
+  def add(key: String, data: Array[Byte])(implicit timeout: Expiration = CacheService.DefaultExpiryTime): Future[CacheEntry] =
+    if (data.length <= MaxDbDataSize) Future successful addData(key, data)
+    else addStream(key, new ByteArrayInputStream(data))
+
+  def addData(key: String, data: Array[Byte])(implicit timeout: Expiration = CacheService.DefaultExpiryTime): CacheEntry =
+    add(CacheEntryData(key, Option(data), timeout = timeout.timeout))
 
   def addStream(key: String, in: => InputStream)(implicit timeout: Expiration = CacheService.DefaultExpiryTime): Future[CacheEntry] = Future {
     val data = CacheEntryData(key, timeout = timeout.timeout)
@@ -69,12 +72,6 @@ class CacheService(implicit inj: Injector) extends Injectable {
     }
   }
 
-  // You can either add byte data directly (for previews or otherwise very small entries), or you can add files.
-  // When adding files, you can optionally specify a parent location under which to put them.
-  private def add(key: String, data: Either[Array[Byte], Option[File]])(implicit timeout: Expiration = CacheService.DefaultExpiryTime): CacheEntry = {
-    add(CacheEntryData(key, data.left.toOption, timeout = timeout.timeout))
-  }
-
   private def add(entry: CacheEntryData) = {
     storage.add(entry)
     new CacheEntry(entry)
@@ -98,5 +95,7 @@ class CacheService(implicit inj: Injector) extends Injectable {
 }
 
 object CacheService {
+  private implicit val logTag: LogTag = "CacheService"
   val DefaultExpiryTime = 7.days
+  val MaxDbDataSize = 4 * 1024
 }

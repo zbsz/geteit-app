@@ -45,25 +45,15 @@ object CacheEntryData {
 
   implicit object CacheEntryDao extends Dao[String, CacheEntryData] {
 
-    object Indexes {
-      val expires = new Index[CacheEntryData, Long]("lastUsed", { e => e.lastUsed + e.timeout })
-      val hasData = new Index[CacheEntryData, Boolean]("hasData", _.data.nonEmpty)
-      val fileId = new Index[CacheEntryData, Uid]("fileId", _.fileId)
-    }
+    val ExpiresIndex = new Index[CacheEntryData, Long]("expires", { e => e.lastUsed + e.timeout })
 
     override def getId(v: CacheEntryData): String = v.key
-    override val table = new Table("CacheEntry", Seq(Indexes.expires, Indexes.hasData))
+    override val table = new Table("CacheEntry", Seq(ExpiresIndex))
 
-    def findAllWithData(implicit db: SQLiteDatabase): Seq[CacheEntryData] = {
-      ??? // TODO: implement indexes
-    }
+    def findAllExpired(currentTime: Long)(implicit db: SQLiteDatabase): Seq[CacheEntryData] =
+      list(query(s"${ExpiresIndex.name} < $currentTime"))
 
-    def findAllExpired(currentTime: Long)(implicit db: SQLiteDatabase): Seq[CacheEntryData] = {
-      ??? // TODO: implement indexes
-    }
-
-    def deleteExpired(currentTime: Long)(implicit db: SQLiteDatabase): Unit = {
-      ??? // TODO: implement indexes
-    }
+    def deleteExpired(currentTime: Long)(implicit db: SQLiteDatabase): Unit =
+      db.delete(table.name, s"${ExpiresIndex.name} < $currentTime", null)
   }
 }

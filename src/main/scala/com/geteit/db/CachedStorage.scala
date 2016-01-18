@@ -61,7 +61,7 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
     value.orElse(Option(cache.get(key)).flatten).fold(addInternal(key, creator))(Future.successful)
   }
 
-  def getAll = storage.read { dao.find("1 = 1")(_) } flatMap { ids => Future.traverse(ids)(get) } map { _.flatten }
+  def listAll = storage.read { dao.list(_) }
 
   def getAll(keys: Seq[K]): Future[Seq[Option[V]]] = {
     val cachedEntries = keys.flatMap { key => Option(cache.get(key)) map { value => (key, value) } }.toMap
@@ -148,15 +148,13 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
     }
   }
 
-  private def addInternal(key: K, value: V): Future[V] = {
-    cache.put(key, Some(value)) match {
-      case Some(`value`) => Future successful value
-      case _ =>
-        returning(storage { dao.insert(Seq(value))(_) }.map { _ => value }) { _ =>
-          onAdded ! Seq(value)
-        }
+  private def addInternal(key: K, value: V): Future[V] =
+    if (cache.put(key, Some(value)) == Some(value)) Future successful value // put may return null - don't use contains
+    else {
+      returning(storage { dao.insert(Seq(value))(_) }.map { _ => value }) { _ =>
+        onAdded ! Seq(value)
+      }
     }
-  }
 
   private def updateInternal(key: K, updater: V => V)(current: V): Future[Option[(V, V)]] = {
     val updated = updater(current)
@@ -189,7 +187,7 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
 
   private lazy val onChanged = EventStream.union[Seq[Cmd[K, V]]](onAdded.map(_.map(Add(_))), onUpdated.map(_.map(p => Add(p._2))), onRemoved.map(_.map(Del(_))))
 
-  private def loadAll: Future[Map[K, V]] = getAll map { _.map(v => dao.getId(v) -> v)(breakOut) }
+  private def loadAll: Future[Map[K, V]] = listAll map { _.map(v => dao.getId(v) -> v)(breakOut) }
 
   def all(implicit ev: EventContext): Signal[Map[K, V]] = new AggregatingSignal[Seq[Cmd[K, V]], Map[K, V]](onChanged, loadAll, { (values, cmds) =>
     var res = values

@@ -17,6 +17,8 @@ class CacheEntry(val data: CacheEntryData)(implicit inj: Injector) extends Injec
 
   def get: Either[File, Array[Byte]] = content.fold(Left(file): Either[File, Array[Byte]])(Right(_))
 
+  def getData: Array[Byte] = content.getOrElse(IoUtils.toByteArray(new FileInputStream(file)))
+
   def inputStream = content.fold[InputStream](new FileInputStream(file))(new ByteArrayInputStream(_))
 
   def outputStream = {

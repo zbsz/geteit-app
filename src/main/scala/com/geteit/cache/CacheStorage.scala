@@ -70,5 +70,5 @@ class CacheStorage(implicit inj: Injector) extends CachedStorage[String, CacheEn
 object CacheStorage {
   def cacheDir(context: Context) = returning(new File(Option(context.getExternalCacheDir).getOrElse(context.getCacheDir), "cache_entries")) { dir => dir.mkdirs() }
   
-  def entryFile(cacheDir: File, uid: Uid) = new File(cacheDir, uid.str.take(2) + File.separator + uid.str)
+  def entryFile(cacheDir: File, uid: Uid) = new File(new File(cacheDir, uid.str.take(2)), uid.str)
 }

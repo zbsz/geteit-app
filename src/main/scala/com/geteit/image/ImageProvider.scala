@@ -74,7 +74,7 @@ class BasicImageProvider(implicit injector: Injector) extends ImageProvider with
 
   def download(uri: Uri) = client(Request.Get(uri)) flatMap {
     case Response(SuccessHttpStatus(), FileResponse(file, _), _) => CancellableFuture.lift(cache.addFile(uri.toString, file, moveFile = true))
-    case Response(SuccessHttpStatus(), BinaryResponse(data, _), _) => CancellableFuture.successful(cache.addData(uri.toString, data))
+    case Response(SuccessHttpStatus(), BinaryResponse(data, _), _) => CancellableFuture.lift(cache.add(uri.toString, data))
     case resp =>
       error(s"unexpected response for uri: $uri")
       CancellableFuture.failed(new Exception(s"unexpected response: $resp for $uri"))
