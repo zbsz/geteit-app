@@ -139,11 +139,11 @@ abstract class Dao[I: Id, A: JsonDecoder : JsonEncoder] {
 
   def decode(c: Cursor) = decoder(c.getString(DataIndex))
 
-  protected[db] def single(c: Cursor) = try {
+  def single(c: Cursor) = try {
     if (c.moveToFirst()) Some(decode(c)) else None
   } finally c.close()
 
-  protected[db] def list(c: Cursor) = try {
+  def list(c: Cursor) = try {
     val builder = Seq.newBuilder[A]
     while (c.moveToNext()) builder += decode(c)
     builder.result()

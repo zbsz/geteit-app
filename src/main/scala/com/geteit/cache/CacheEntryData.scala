@@ -9,7 +9,12 @@ import com.geteit.json.{Json, JsonValue}
 import com.geteit.util.Log
 
 @JsonValue
-case class Uid(str: String)
+case class Uid(str: String) {
+  lazy val (leastSigBits, mostSigBits) = {
+    val uuid = UUID.fromString(str)
+    (uuid.getLeastSignificantBits, uuid.getMostSignificantBits)
+  }
+}
 
 object Uid {
   def apply() = new Uid(UUID.randomUUID().toString)

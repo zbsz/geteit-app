@@ -46,6 +46,10 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
 
   def query(matcher: Matcher[V]): Future[Cursor] = storage.read { dao.query(matcher.whereSql)(_) }
 
+  def list(matcher: Matcher[V]): Future[Seq[V]] = storage.read { db => dao.list(dao.query(matcher.whereSql)(db)) } // TODO: add loaded items to cache
+
+  def count(matcher: Matcher[V]): Future[Long] = storage.read { dao.count(matcher.whereSql)(_) }
+
   def remove(matcher: Matcher[V]): Future[Unit] = find(matcher) map { _ foreach remove }
 
   def insert(item: V) = updateOrCreate(dao.getId(item), _ => item, item)
