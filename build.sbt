@@ -6,7 +6,7 @@ android.Plugin.androidBuildAar
 
 name := "geteit-app"
 organization := "com.geteit"
-version := "0.2-SNAPSHOT"
+version := "0.2"
 
 scalaVersion := "2.11.7"
 
