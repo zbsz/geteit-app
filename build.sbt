@@ -6,7 +6,7 @@ android.Plugin.androidBuildAar
 
 name := "geteit-app"
 organization := "com.geteit"
-version := "0.2"
+version := "0.3-SNAPSHOT"
 
 scalaVersion := "2.11.7"
 
@@ -37,7 +37,7 @@ libraryDependencies ++= Seq (
   "com.android.support" % "cardview-v7" % supportLibVersion,
   "com.android.support" % "recyclerview-v7" % supportLibVersion,
   "com.nineoldandroids" % "library" % "2.4.0",
-  "com.geteit" %% "geteit-utils" % "0.4-SNAPSHOT",
+  "com.geteit" %% "geteit-utils" % "0.5-SNAPSHOT",
   "com.koushikdutta.async" % "androidasync" % "2.1.3",
   "org.scalatest" %% "scalatest" % "2.2.5" % Test,
   "org.scalacheck" %% "scalacheck" % "1.11.6" % Test,

@@ -14,6 +14,7 @@ object GtAppModule {
     bind [ImageProvider] to new BasicImageProvider
     bind [CacheService] to new CacheService
     bind [CacheStorage] to new CacheStorage
+    bind [UserAgent] to UserAgent(inject[Context])
     bind [AsyncClient] to new AsyncClient
     bind [CookieStorage] to new MemoryCookieStorage
     bind [KeyValueStorage] to new KeyValueStorage

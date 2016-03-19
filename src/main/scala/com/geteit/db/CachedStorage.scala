@@ -67,7 +67,7 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
 
   def listAll = storage.read { dao.list(_) }
 
-  def getAll(keys: Seq[K]): Future[Seq[Option[V]]] = {
+  def getAll(keys: Traversable[K]): Future[Seq[Option[V]]] = {
     val cachedEntries = keys.flatMap { key => Option(cache.get(key)) map { value => (key, value) } }.toMap
     val missingKeys = keys.toSet -- cachedEntries.keys
     val loaderOfMissing = { (keys: Seq[K], db: SQLiteDatabase) => keys.flatMap(key => dao.get(key)(db).map { value => (key, value) })}
@@ -80,9 +80,9 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
         }
       } .toMap
 
-      keys map { key =>
+      keys .map { key =>
         loadedMap.get(key).orElse(cachedEntries.get(key)).getOrElse(None)
-      }
+      } (breakOut)
     }
   }
 
@@ -96,18 +96,17 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
     prev.fold { addInternal(key, creator) } { v => updateInternal(key, updater)(v).map(_.fold(v)(_._2)) }
   }
 
-  def updateAll(updaters: scala.collection.Map[K, V => V]): Future[Seq[(V, V)]] = {
-    val keys = updaters.keys.toSeq
+  def updateAll(keys: Iterable[K], updater: V => V): Future[Seq[(V, V)]] = {
     getAll(keys) flatMap { values =>
-      val updated = keys.zip(values) flatMap { case (k, v) =>
+      val updated = keys.zip(values) .flatMap { case (k, v) =>
         Option(cache.get(k)).flatten.orElse(v).flatMap { value =>
-          val updated = updaters(k)(value)
+          val updated = updater(value)
           if (updated != value) {
             cache.put(k, Some(updated))
             Some(value -> updated)
           } else None
         }
-      }
+      } .toSeq
 
       if (updated.isEmpty) Future.successful(Seq.empty)
       else
@@ -117,17 +116,16 @@ abstract class CachedStorage[K, V](implicit val dao: Dao[K, V], inj: Injector) e
     }
   }
 
-  def updateOrCreateAll(updaters: K Map (Option[V] => V)): Future[Set[V]] = {
-    val keys = updaters.keys.toSeq
+  def updateOrCreateAll(keys: Iterable[K], updater: ((K, Option[V]) => V)): Future[Set[V]] = {
     getAll(keys) flatMap { values =>
       val loaded: Map[K, Option[V]] = keys.zip(values).map { case (k, v) => k -> Option(cache.get(k)).flatten.orElse(v) } (breakOut)
       val toSave = Seq.newBuilder[V]
       val added = Seq.newBuilder[V]
       val updated = Seq.newBuilder[(V, V)]
 
-      val result = updaters .map { case (key, updater) =>
+      val result = keys .map { key =>
         val current = loaded.get(key).flatten
-        val next = updater(current)
+        val next = updater(key, current)
         current match {
           case Some(c) if c != next =>
             cache.put(key, Some(next))
@@ -193,6 +191,13 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
 
   private def loadAll: Future[Map[K, V]] = listAll map { _.map(v => dao.getId(v) -> v)(breakOut) }
 
+  def onChange(key: K) = {
+    val added = onAdded.map[Seq[Cmd[K, V]]](_.filter(v => dao.getId(v) == key).map(Add(_))).filter(_.nonEmpty)
+    val updated = onUpdated.map[Seq[Cmd[K, V]]](_.filter(v => dao.getId(v._2) == key).map(p => Add(p._2))).filter(_.nonEmpty)
+    val removed = onRemoved.map[Seq[Cmd[K, V]]](_.filter(_ == key).map(Del(_))).filter(_.nonEmpty)
+    EventStream.union[Seq[Cmd[K, V]]](added, updated, removed)
+  }
+
   def all(implicit ev: EventContext): Signal[Map[K, V]] = new AggregatingSignal[Seq[Cmd[K, V]], Map[K, V]](onChanged, loadAll, { (values, cmds) =>
     var res = values
     cmds foreach {
@@ -202,25 +207,12 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
     res
   })
 
-  def signal(id: K)(implicit ev: EventContext): Signal[V] = new Signal[V]() {
+  def signal(id: K)(implicit ev: EventContext): Signal[Option[V]] = {
+    val added = onAdded.map(_.reverseIterator.find(v => dao.getId(v) == id)).filter(_.nonEmpty)
+    val updated = onUpdated.map(_.reverseIterator.collectFirst { case (_, v) if dao.getId(v) == id => v }).filter(_.nonEmpty)
+    val removed = onRemoved.filter(_.contains(id)).map(_ => Option.empty[V])
 
-    def reload() = self.get(id).map { _.foreach(this.publish) }
-
-    private var observers = Seq.empty[Subscription]
-
-    override protected def onWire(): Unit = {
-      observers = Seq(
-        onAdded.map(_.reverseIterator.find(v => dao.getId(v) == id)) { _.foreach(publish) }, // FIXME: possible race condition with reload result
-        onUpdated.map(_.reverseIterator.find(p => dao.getId(p._2) == id)) { _.foreach(p => publish(p._2)) },
-        onRemoved.filter(_.exists(_ == id)) { _ => reload() }
-      )
-      reload()
-    }
-
-    override protected def onUnwire(): Unit = {
-      observers foreach (_.destroy())
-      clear()
-    }
+    Signal.wrap(EventStream.union(added, updated, removed)).orElse(Signal.future(get(id)))
   }
 
   def findSignal(matcher: Matcher[V])(implicit ev: EventContext): Signal[Set[K]] = new Signal[Set[K]] {
@@ -272,8 +264,8 @@ trait CachedStorageSignal[K, V] { self: CachedStorage[K, V] =>
 
 object CachedStorageSignal {
   trait Cmd[+K, +V]
-  case class Add[A](v: A) extends Cmd[Nothing, A]
-  case class Del[A](v: A) extends Cmd[A, Nothing]
+  case class Add[V](v: V) extends Cmd[Nothing, V]
+  case class Del[K](k: K) extends Cmd[K, Nothing]
 }
 
 class AutoCloseCursor(c: Cursor) extends CursorWrapper(c) {

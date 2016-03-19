@@ -6,11 +6,11 @@ import java.lang.System._
 import android.content.Context
 import com.geteit.cache.CacheEntryData.CacheEntryDao
 import com.geteit.concurrent.Threading
-import com.geteit.db.{CachedStorage, Storage}
+import com.geteit.db.CachedStorage
 import com.geteit.events.EventContext
+import com.geteit.inject.{Injectable, Injector}
 import com.geteit.util.Log._
 import com.geteit.util._
-import com.geteit.inject.{Injectable, Injector}
 
 import scala.concurrent.Future
 
@@ -38,7 +38,7 @@ class CacheStorage(implicit inj: Injector) extends CachedStorage[String, CacheEn
 
   override def get(key: String): Future[Option[CacheEntryData]] = super.get(key) map filterValid
 
-  override def getAll(keys: Seq[String]): Future[Seq[Option[CacheEntryData]]] = super.getAll(keys) map { _ map filterValid }
+  override def getAll(keys: Traversable[String]): Future[Seq[Option[CacheEntryData]]] = super.getAll(keys) map { _ map filterValid }
 
   def entryFile(id: Uid) = CacheStorage.entryFile(cacheDir, id)
   

@@ -27,7 +27,10 @@ class KeyValueStorage(implicit inj: Injector) extends CachedStorage[String, KeyV
       case Some(_) => Future.successful(())
     } .recoverWithLog()
 
-    val source = signal(key)(ev).map { kv => LoggedTry(kv.decode[T]).getOrElse(default) }
+    val source = signal(key)(ev).map {
+      case Some(kv) => LoggedTry(kv.decode[T]).getOrElse(default)
+      case None => default
+    }
 
     new ProxySignal[T](source) with Source[T] {
       override protected def computeValue(current: Option[T]) = source.currentValue

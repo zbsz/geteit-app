@@ -12,7 +12,7 @@ import scala.collection.mutable
 trait RoboView { self: TextView =>
   import RoboView._
 
-  protected def initFont(attrs: AttributeSet)(implicit context: Context) {
+  protected def initFont(attrs: AttributeSet)(implicit context: Context) = {
     val a = context.obtainStyledAttributes(attrs, R.styleable.RoboView)
     val typeId = a.getInt(R.styleable.RoboView_fontFamily, 0)
     setTypeface(roboTypeface(typeId))

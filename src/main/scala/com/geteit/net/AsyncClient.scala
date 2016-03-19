@@ -29,7 +29,7 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
 
   lazy val bodyDecoder = inject[ResponseBodyDecoder]
 
-  lazy val userAgent = AsyncClient.userAgent(inject[Context])
+  lazy val userAgent = inject[UserAgent]
 
   val client = ClientWrapper { new AsyncHttpClient(new AsyncServer) }
 
@@ -75,7 +75,7 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
     val r = new AsyncHttpRequest(req.uri, req.httpMethod)
     r.setTimeout(req.timeout.toMillis.toInt)
     req.headers.foreach(p => r.addHeader(p._1, p._2))
-    r.setHeader("User-Agent", userAgent)
+    r.setHeader("User-Agent", req.headers.getOrElse("User-Agent", userAgent.str))
     req.getBody(r)
   }
 
@@ -89,14 +89,11 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
       case _ => ContentRange(0, contentLength, contentLength)
     }
 
-    debug(s"got connection response for request: $uri, status: '$httpStatus', length: '$contentLength', headers: '${response.headers()}'")
-    verbose(s"decoder: $decoder")
+    verbose(s"got connection response for request: $uri, status: '$httpStatus', length: '$contentLength', headers: '${response.headers()}'")
 
     progressCallback foreach (_(Progress(0L, range, Progress.Running)))
     if (contentLength == 0) CancellableFuture.successful(Response(httpStatus))
     else {
-      debug(s"waiting for content from $uri")
-
       val p = Promise[Response]()
       val consumer = decoder(response.headers(), contentLength)
 
@@ -104,7 +101,6 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
         var bytesReceived = new AtomicLong(0L)
 
         override def onDataAvailable(emitter: DataEmitter, bb: ByteBufferList): Unit = {
-          debug(s"data received for $uri, length: ${bb.remaining}")
           val numConsumed = bb.remaining
           consumer.consume(bb)
           progressCallback foreach { cb => Future(cb(Progress(bytesReceived.addAndGet(numConsumed), range, Progress.Running))) }
@@ -113,7 +109,7 @@ class AsyncClient(implicit inj: Injector) extends Injectable {
 
       response.setEndCallback(new CompletedCallback {
         override def onCompleted(ex: Exception): Unit = {
-          debug(s"response for $uri ENDED, ex: $ex, p.isCompleted: ${p.isCompleted}")
+          verbose(s"onCompleted(ex: $ex) $uri ")
           if (ex != null) ex.printStackTrace(Console.err)
           response.setDataCallback(null)
           p.tryComplete(
@@ -150,16 +146,20 @@ object AsyncClient {
   val DefaultTimeout = 5.minutes
   val EmptyHeaders = Map[String, String]()
 
-  def userAgent(implicit context: Context) = {
-    import android.os.Build._
-    val appVersion = context.getPackageManager.getPackageInfo(context.getPackageName, 0).versionName
-    s"${context.getPackageName}/$appVersion (Android ${VERSION.RELEASE}; $MANUFACTURER $MODEL)"
-  }
-
   private def exceptionStatus: PartialFunction[Throwable, Response] = {
     case CancelException => throw CancelException
     case e: ConnectException => Response(Response.ConnectionError(e.getMessage))
     // TODO: handle connection exceptions
     case NonFatal(e) => Response(Response.InternalError(e.getMessage, Some(e)))
+  }
+}
+
+case class UserAgent(str: String)
+
+object UserAgent {
+  def apply(context: Context): UserAgent = {
+    import android.os.Build._
+    val appVersion = context.getPackageManager.getPackageInfo(context.getPackageName, 0).versionName
+    UserAgent(s"${context.getPackageName}/$appVersion (Android ${VERSION.RELEASE}; $MANUFACTURER $MODEL)")
   }
 }
