@@ -4,7 +4,6 @@ import java.io.{File, InputStream}
 import java.net.URLEncoder
 
 import android.net.Uri
-import android.net.http.AndroidHttpClient
 import com.geteit.net.ContentEncoder.{EmptyContentEncoder, EmptyRequestContent, RequestContent}
 import com.geteit.net.Request.ProgressCallback
 import com.geteit.util.{IoUtils, _}
@@ -116,7 +115,7 @@ object ContentEncoder {
   case class GzippedRequestContent(bytes: Array[Byte], contentType: String) extends ByteArrayRequestContent {
 
     override lazy val data = {
-      if (bytes.length <= AndroidHttpClient.DEFAULT_SYNC_MIN_GZIP_BYTES) bytes
+      if (bytes.length <= 200) bytes
       else {
         val zip = IoUtils.gzip(bytes)
         if (zip.length >= bytes.length) bytes
